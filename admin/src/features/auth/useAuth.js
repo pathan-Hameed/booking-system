@@ -3,16 +3,23 @@ import { authApi } from "./auth.api";
 import { useAuthStore } from "./auth.store";
 
 export function useAuth() {
-  const { setAuth, logout, isAuthed, user } = useAuthStore();
+  const { setAuth, logout: clearAuth, isAuthed, user } = useAuthStore();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
   async function login(values) {
-    setLoading(true);
-    setError("");
     try {
+      setLoading(true);
+      setError("");
+
       const data = await authApi.adminLogin(values);
-      setAuth(data);
+
+      // We no longer store token manually because auth is cookie-based.
+      setAuth({
+        token: "cookie-session",
+        user: data.user,
+      });
+
       return data;
     } catch (e) {
       setError(e.message || "Login failed");
@@ -22,5 +29,20 @@ export function useAuth() {
     }
   }
 
-  return { login, logout, isAuthed, user, loading, error };
+  async function logout() {
+    try {
+      await authApi.adminLogout();
+    } finally {
+      clearAuth();
+    }
+  }
+
+  return {
+    login,
+    logout,
+    isAuthed,
+    user,
+    loading,
+    error,
+  };
 }
