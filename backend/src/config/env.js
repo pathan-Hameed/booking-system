@@ -10,9 +10,11 @@ export const env = {
   CORS_ORIGIN: (process.env.CORS_ORIGIN || "").split(",").filter(Boolean),
 
   JWT_ACCESS_SECRET: process.env.JWT_ACCESS_SECRET,
-  JWT_ACCESS_EXPIRES_IN: process.env.JWT_ACCESS_EXPIRES_IN || "1h",
+  JWT_REFRESH_SECRET: process.env.JWT_REFRESH_SECRET,
+  JWT_ACCESS_EXPIRES_IN: process.env.JWT_ACCESS_EXPIRES_IN || "15m",
+  JWT_REFRESH_EXPIRES_IN: process.env.JWT_REFRESH_EXPIRES_IN || "7d",
 
-  COOKIE_NAME: process.env.COOKIE_NAME || "admin_token",
+  COOKIE_NAME: process.env.COOKIE_NAME || "refresh_token",
   COOKIE_SECURE: process.env.COOKIE_SECURE === "true",
   COOKIE_SAMESITE: process.env.COOKIE_SAMESITE || "lax",
 };

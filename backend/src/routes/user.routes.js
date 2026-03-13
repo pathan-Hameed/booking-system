@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { requireAuth } from "../middlewares/requireAuth.js";
-import { requireRole } from "../middlewares/requireRole.js";
+import  requireRole  from "../middlewares/requireRole.js";
 import { validateBody } from "../middlewares/validate.js";
 
 import * as user from "../controllers/user.controller.js";

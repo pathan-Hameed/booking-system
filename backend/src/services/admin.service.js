@@ -31,10 +31,7 @@ export async function getDashboardStats() {
     Booking.countDocuments({
       createdAt: { $gte: todayStart, $lte: todayEnd },
     }),
-    Booking.find()
-      .sort({ createdAt: -1 })
-      .limit(5)
-      .lean(),
+    Booking.find().sort({ createdAt: -1 }).limit(5).lean(),
   ]);
 
   return {
@@ -69,6 +66,8 @@ export async function listBookings({
 
   const [items, total] = await Promise.all([
     Booking.find(filter)
+      .populate("staffId", "name")
+      .populate("serviceId", "name")
       .sort({ createdAt: -1 })
       .skip((p - 1) * l)
       .limit(l)

@@ -1,11 +1,11 @@
 import { ApiError } from "../utils/ApiError.js";
 
-/**
- * Usage: router.post(..., requireRole("admin"), handler)
- */
-export function requireRole(role) {
+export default function requireRoles(...allowedRoles) {
   return (req, _res, next) => {
-    if (req.user?.role !== role) return next(new ApiError(403, "Forbidden"));
+    if (!req.user || !allowedRoles.includes(req.user.role)) {
+      return next(new ApiError(403, "Forbidden"));
+    }
+
     next();
   };
 }
