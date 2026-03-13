@@ -96,12 +96,12 @@ export default function Bookings() {
     {
       key: "serviceName",
       header: "Service",
-      render: (r) => r.serviceName || r.service?.name || "-",
+      render: (r) => r.serviceId?.name || "-",
     },
     {
       key: "staffName",
       header: "Staff",
-      render: (r) => r.staffName || r.staff?.name || "-",
+      render: (r) => r.staffId?.name || "-",
     },
     {
       key: "slot",

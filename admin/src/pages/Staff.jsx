@@ -182,7 +182,7 @@ export default function Staff() {
               value={form.name}
               onChange={handleChange}
               placeholder="Staff name"
-              className="rounded-lg bg-zinc-900 px-4 py-2"
+              className="rounded-lg bg-zinc-900 px-4 py-2 border border-white/10 focus:border-white/30"
               required
             />
 
@@ -191,7 +191,7 @@ export default function Staff() {
               value={form.specialty}
               onChange={handleChange}
               placeholder="Specialty"
-              className="rounded-lg bg-zinc-900 px-4 py-2"
+              className="rounded-lg bg-zinc-900 px-4 py-2 border border-white/10 focus:border-white/30"
             />
 
             <input
@@ -199,7 +199,7 @@ export default function Staff() {
               name="start"
               value={form.workingHours.start}
               onChange={handleChange}
-              className="rounded-lg bg-zinc-900 px-4 py-2"
+              className="rounded-lg bg-zinc-900 px-4 py-2 border border-white/10 focus:border-white/30"
             />
 
             <input
@@ -207,7 +207,7 @@ export default function Staff() {
               name="end"
               value={form.workingHours.end}
               onChange={handleChange}
-              className="rounded-lg bg-zinc-900 px-4 py-2"
+              className="rounded-lg bg-zinc-900 text-gray-200 px-4 py-2 border border-white/10 focus:border-white/30"
             />
 
             <button

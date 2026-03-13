@@ -13,7 +13,7 @@ export async function adminLogin({ email, password }) {
 }
 
 /**
- * Get current logged-in admin
+ * Get current logged-in admin/employee
  */
 export async function getAdminMe() {
   const res = await apiClient.get("/auth/admin/me");
@@ -21,15 +21,24 @@ export async function getAdminMe() {
 }
 
 /**
+ * Refresh access token using refresh-token cookie
+ */
+export async function refreshAuth() {
+  const res = await apiClient.post("/auth/refresh");
+  return res.data.data;
+}
+
+/**
  * Logout admin
  */
 export async function adminLogout() {
-  const res = await apiClient.post("/auth/admin/logout");
+  const res = await apiClient.post("/auth/logout");
   return res.data;
 }
 
 export const authApi = {
   adminLogin,
   getAdminMe,
+  refreshAuth,
   adminLogout,
 };

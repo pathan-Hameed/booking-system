@@ -3,7 +3,7 @@ import { authApi } from "./auth.api";
 import { useAuthStore } from "./auth.store";
 
 export function useAuth() {
-  const { setAuth, logout: clearAuth, isAuthed, user } = useAuthStore();
+  const { setAuth, logout: clearAuth, isAuthed, user, token, bootstrapping } = useAuthStore();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
@@ -14,9 +14,8 @@ export function useAuth() {
 
       const data = await authApi.adminLogin(values);
 
-      // We no longer store token manually because auth is cookie-based.
       setAuth({
-        token: "cookie-session",
+        token: data.accessToken,
         user: data.user,
       });
 
@@ -42,7 +41,9 @@ export function useAuth() {
     logout,
     isAuthed,
     user,
+    token,
     loading,
     error,
+    bootstrapping,
   };
 }
