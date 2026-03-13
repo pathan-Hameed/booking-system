@@ -1,12 +1,9 @@
-// =============================================================
-// file: useCreateBooking.jsx
-// description: Custom hook for creating a booking 
-// =============================================================
-
-// src/hooks/useCreateBooking.js
 import { useState } from "react";
-import { createBooking } from "../services/MockApi";
+import { createBooking } from "../services/booking.api";
 
+/**
+ * Create public booking
+ */
 export function useCreateBooking() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -15,7 +12,9 @@ export function useCreateBooking() {
     try {
       setLoading(true);
       setError("");
-      return await createBooking(payload);
+
+      const data = await createBooking(payload);
+      return data;
     } catch (e) {
       setError(e.message || "Booking failed");
       throw e;
@@ -24,5 +23,9 @@ export function useCreateBooking() {
     }
   }
 
-  return { loading, error, submitBooking };
+  return {
+    loading,
+    error,
+    submitBooking,
+  };
 }

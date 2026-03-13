@@ -1,11 +1,11 @@
 import { useEffect, useState } from "react";
-import { getServices } from "../services/services.api";
+import { getStaff } from "../services/services.api";
 
 /**
- * Fetch active services from backend
+ * Fetch active staff from backend
  */
-export function useServices() {
-  const [services, setServices] = useState([]);
+export function useStaff() {
+  const [staff, setStaff] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
@@ -17,11 +17,11 @@ export function useServices() {
         setLoading(true);
         setError("");
 
-        const data = await getServices();
+        const data = await getStaff();
 
-        if (alive) setServices(data);
+        if (alive) setStaff(data);
       } catch (e) {
-        if (alive) setError(e.message || "Failed to load services");
+        if (alive) setError(e.message || "Failed to load staff");
       } finally {
         if (alive) setLoading(false);
       }
@@ -34,5 +34,5 @@ export function useServices() {
     };
   }, []);
 
-  return { services, loading, error };
+  return { staff, loading, error };
 }
