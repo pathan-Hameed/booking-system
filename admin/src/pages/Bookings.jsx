@@ -9,6 +9,7 @@ function getStatusTone(status) {
   if (status === "pending") return "warning";
   if (status === "cancelled") return "danger";
   if (status === "no_show") return "danger";
+  if (status === "expired") return "default";
   return "default";
 }
 
@@ -21,6 +22,104 @@ function formatDateTime(value) {
     dateStyle: "medium",
     timeStyle: "short",
   }).format(date);
+}
+
+function formatAppointment(date, startTime, endTime) {
+  if (!date || !startTime) return "-";
+
+  const start = new Date(`${date}T${startTime}:00`);
+  const end = endTime ? new Date(`${date}T${endTime}:00`) : null;
+
+  const dateFormatted = new Intl.DateTimeFormat("en-IN", {
+    dateStyle: "medium",
+  }).format(start);
+
+  const timeFormatted = new Intl.DateTimeFormat("en-IN", {
+    timeStyle: "short",
+  }).format(start);
+
+  const endTimeFormatted = end
+    ? new Intl.DateTimeFormat("en-IN", {
+        timeStyle: "short",
+      }).format(end)
+    : null;
+
+  return {
+    date: dateFormatted,
+    time: endTimeFormatted
+      ? `${timeFormatted} - ${endTimeFormatted}`
+      : timeFormatted,
+  };
+}
+
+function formatWhatsappNumber(phone) {
+  if (!phone) return "";
+  const digits = String(phone).replace(/\D/g, "");
+
+  if (!digits) return "";
+  if (digits.startsWith("91")) return digits;
+  if (digits.length === 10) return `91${digits}`;
+
+  return digits;
+}
+
+function buildWhatsappMessage(booking) {
+  const customerName = booking.customerName || "Guest";
+  const serviceName = booking.serviceId?.name || "Salon Service";
+  const staffName = booking.staffId?.name || "Our Specialist";
+
+  const formattedDate = booking.date
+    ? new Date(`${booking.date}T00:00:00`).toLocaleDateString("en-IN", {
+        weekday: "long",
+        day: "numeric",
+        month: "long",
+        year: "numeric",
+      })
+    : "-";
+
+  const formatTo12Hour = (time) => {
+    if (!time) return "";
+    const [hour, minute] = time.split(":");
+    const date = new Date();
+    date.setHours(Number(hour), Number(minute), 0, 0);
+
+    return date.toLocaleTimeString("en-IN", {
+      hour: "numeric",
+      minute: "2-digit",
+      hour12: true,
+    });
+  };
+
+  const formattedStartTime = formatTo12Hour(booking.startTime);
+  const formattedEndTime = formatTo12Hour(booking.endTime);
+
+  return `Dear ${customerName},
+
+We are delighted to confirm your appointment with *Snippet Salon*.
+
+*APPOINTMENT DETAILS*
+
+Service
+${serviceName}
+
+Stylist
+${staffName}
+
+Date
+${formattedDate}
+
+Time
+${formattedStartTime}${formattedEndTime ? ` - ${formattedEndTime}` : ""}
+
+Kindly arrive 5–10 minutes prior to your scheduled appointment for a seamless experience.
+
+Should you need any assistance, rescheduling, or cancellation, please feel free to get in touch with us in advance.
+
+We look forward to welcoming you and serving you.
+
+Warm regards,
+*Snippet Salon*
+Luxury Hair • Beauty • Care`;
 }
 
 export default function Bookings() {
@@ -82,6 +181,20 @@ export default function Bookings() {
     }
   };
 
+  const openWhatsapp = (booking) => {
+    const phone = formatWhatsappNumber(booking.phone);
+
+    if (!phone) {
+      alert("Customer phone number is not available");
+      return;
+    }
+
+    const text = encodeURIComponent(buildWhatsappMessage(booking));
+    const url = `https://wa.me/${phone}?text=${text}`;
+
+    window.open(url, "_blank");
+  };
+
   const columns = [
     {
       key: "customerName",
@@ -89,7 +202,9 @@ export default function Bookings() {
       render: (r) => (
         <div>
           <div className="font-medium text-white">{r.customerName || "-"}</div>
-          <div className="text-xs text-zinc-400">{r.phone || r.email || "-"}</div>
+          <div className="text-xs text-zinc-400">
+            {r.phone || r.email || "-"}
+          </div>
         </div>
       ),
     },
@@ -106,20 +221,22 @@ export default function Bookings() {
     {
       key: "slot",
       header: "Appointment",
-      render: (r) => (
-        <div>
-          <div>{r.date || "-"}</div>
-          <div className="text-xs text-zinc-400">{r.startTime || r.time || "-"}</div>
-        </div>
-      ),
+      render: (r) => {
+        const slot = formatAppointment(r.date, r.startTime, r.endTime);
+
+        return (
+          <div>
+            <div>{slot.date}</div>
+            <div className="text-xs text-zinc-400">{slot.time}</div>
+          </div>
+        );
+      },
     },
     {
       key: "status",
       header: "Status",
       render: (r) => (
-        <Badge tone={getStatusTone(r.status)}>
-          {r.status || "-"}
-        </Badge>
+        <Badge tone={getStatusTone(r.status)}>{r.status || "-"}</Badge>
       ),
     },
     {
@@ -137,19 +254,36 @@ export default function Bookings() {
       render: (r) => {
         const id = r._id || r.id;
         const busy = actionLoadingId === id;
+        const canMessage = r.status === "confirmed";
 
         return (
-          <select
-            value={r.status}
-            disabled={busy}
-            onChange={(e) => handleStatusUpdate(r, e.target.value)}
-            className="h-9 rounded-lg bg-zinc-950 border border-white/10 px-3 text-sm outline-none focus:border-white/30"
-          >
-            <option value="pending">pending</option>
-            <option value="confirmed">confirmed</option>
-            <option value="cancelled">cancelled</option>
-            <option value="no_show">no_show</option>
-          </select>
+          <div className="flex flex-col gap-2 sm:flex-row">
+            <select
+              value={r.status}
+              disabled={busy}
+              onChange={(e) => handleStatusUpdate(r, e.target.value)}
+              className="h-9 rounded-lg bg-zinc-950 border border-white/10 px-3 text-sm outline-none focus:border-white/30"
+            >
+              <option value="pending">pending</option>
+              <option value="confirmed">confirmed</option>
+              <option value="cancelled">cancelled</option>
+              <option value="no_show">no_show</option>
+              <option value="expired">expired</option>
+            </select>
+
+            <button
+              type="button"
+              disabled={!canMessage}
+              onClick={() => openWhatsapp(r)}
+              className={`rounded-lg border px-3 py-2 text-sm transition ${
+                canMessage
+                  ? "border-white/10 bg-zinc-900 text-white hover:bg-zinc-800"
+                  : "cursor-not-allowed border-white/5 bg-zinc-900/40 text-zinc-500 opacity-60"
+              }`}
+            >
+              Message
+            </button>
+          </div>
         );
       },
     },
@@ -167,13 +301,18 @@ export default function Bookings() {
           </div>
 
           <div className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-right">
-            <div className="text-xs uppercase tracking-wide text-zinc-400">Total bookings</div>
+            <div className="text-xs uppercase tracking-wide text-zinc-400">
+              Total bookings
+            </div>
             <div className="mt-1 text-2xl font-semibold">{meta.total}</div>
           </div>
         </div>
 
         <div className="mt-6 rounded-2xl border border-white/10 bg-white/5 p-5">
-          <form onSubmit={handleSearch} className="grid gap-3 lg:grid-cols-[1fr_180px_120px]">
+          <form
+            onSubmit={handleSearch}
+            className="grid gap-3 lg:grid-cols-[1fr_180px_120px]"
+          >
             <input
               value={search}
               onChange={(e) => setSearch(e.target.value)}
