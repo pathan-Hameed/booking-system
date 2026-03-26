@@ -1,13 +1,18 @@
 import { useEffect, useMemo, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import PageTransition from "../components/PageTransition";
-import SlotPicker from "../components/SlotPicker";
-import BookingForm from "../components/BookingForm";
+import BookingProgressStepper from "../components/BookingProgressStepper";
+import ServiceSelector from "../components/ServiceSelector";
+import StaffSelector from "../components/StaffSelector";
+import DateSelector from "../components/DateSelector";
+import SlotSelector from "../components/SlotSelector";
+import PersonalInfoForm from "../components/PersonalInfoForm";
 import { useServices } from "../hooks/useServices";
 import { useAvailability } from "../hooks/useAvailability";
 import { useCreateBooking } from "../hooks/useCreateBooking";
-import { formatDate } from "../utils/formatDate";
+import { useStaff } from "../hooks/useStaff";
 
+// Helper to get today's ISO date
 function todayISO() {
   const d = new Date();
   const yyyy = d.getFullYear();
@@ -16,17 +21,50 @@ function todayISO() {
   return `${yyyy}-${mm}-${dd}`;
 }
 
+// Helper to format date
+function formatDateObj(dateStr) {
+  const date = new Date(dateStr + "T00:00:00");
+  return date.toLocaleDateString("en-US", {
+    weekday: "short",
+    month: "short",
+    day: "numeric",
+  });
+}
+
+// Generate dates for the next 14 days
+function generateDates() {
+  const dates = [];
+  const today = new Date();
+  for (let i = 0; i < 14; i++) {
+    const date = new Date(today);
+    date.setDate(date.getDate() + i);
+    const iso = date.toISOString().split("T")[0];
+    const day = date.toLocaleDateString("en-US", { weekday: "short" });
+    dates.push({
+      date: iso,
+      day: day.substring(0, 3),
+      dateNum: date.getDate(),
+    });
+  }
+  return dates;
+}
+
 export default function Book() {
   const { state } = useLocation();
   const navigate = useNavigate();
 
+  // Hooks
   const {
-    services,
+    services = [],
     loading: servicesLoading,
     error: servicesError,
-  } = useServices();
+  } = useServices?.() || { services: [], loading: false, error: null };
+
+  const { staff, loading, error } = useStaff();
+
   const {
-    slotsByStaff,
+    slotsByStaff = [],
+    anyStaffSlots = [],
     loading: slotsLoading,
     error: slotsError,
     fetchAvailability,
@@ -35,194 +73,260 @@ export default function Book() {
   const {
     loading: bookingLoading,
     error: bookingError,
-    submitBooking,
-  } = useCreateBooking();
+    submitBooking = async () => {},
+  } = useCreateBooking?.() || {
+    loading: false,
+    error: null,
+    submitBooking: async () => {},
+  };
 
+  // State management
+  const [currentStep, setCurrentStep] = useState(1);
   const [serviceId, setServiceId] = useState(state?.preselectServiceId || "");
-  const [date, setDate] = useState(todayISO());
   const [staffId, setStaffId] = useState("");
-  const [time, setTime] = useState("");
+  const [selectedDate, setSelectedDate] = useState(todayISO());
+  const [selectedSlot, setSelectedSlot] = useState("");
+  const [formData, setFormData] = useState({
+    customerName: "",
+    phone: "",
+    email: "",
+    notes: "",
+  });
 
+  // Generate dates
+  const dates = generateDates();
+  const slots = staffId
+    ? slotsByStaff.find((s) => String(s.staffId) === String(staffId))?.slots ||
+      []
+    : anyStaffSlots || [];
+
+  // Get the selected service
   const selectedService = useMemo(
     () => services.find((s) => String(s._id || s.id) === String(serviceId)),
     [services, serviceId],
   );
 
-  /**
-   * Whenever service/date changes, refetch availability
-   */
+  // Fetch availability when service or date changes
   useEffect(() => {
-    if (!serviceId || !date) return;
+    if (!serviceId || !selectedDate || currentStep !== 3) return;
+    fetchAvailability({ serviceId, date: selectedDate, staffId });
+  }, [serviceId, selectedDate, currentStep, fetchAvailability]);
 
-    setStaffId("");
-    setTime("");
-
-    fetchAvailability({ serviceId, date });
-  }, [serviceId, date]);
-
-  /**
-   * Find currently selected staff's slots
-   */
-  const selectedStaffSlots =
-    slotsByStaff.find((item) => String(item.staffId) === String(staffId))
-      ?.slots || [];
-
-  async function handleBookingSubmit(customerForm) {
-    if (!serviceId) {
+  // Handle step navigation - Next
+  const handleNext = () => {
+    if (currentStep === 1 && !serviceId) {
       alert("Please select a service");
       return;
     }
-
-    if (!staffId) {
-      alert("Please select a staff member");
+    if (currentStep === 2) {
+      // Staff is optional, proceed anyway
+    }
+    if (currentStep === 3 && !selectedSlot) {
+      alert("Please select a time slot");
       return;
     }
+    if (currentStep < 4) {
+      setCurrentStep(currentStep + 1);
+    }
+  };
 
-    if (!time) {
-      alert("Please select a time slot");
+  // Handle step navigation - Back
+  const handleBack = () => {
+    if (currentStep > 1) {
+      setCurrentStep(currentStep - 1);
+    }
+  };
+
+  // Handle booking submission
+  const handleBookingSubmit = async (finalFormData) => {
+    if (!serviceId || !selectedSlot) {
+      alert("Please complete all required fields");
       return;
     }
 
     const bookingPayload = {
       serviceId,
-      staffId,
-      date,
-      startTime: time,
-      customerName: customerForm.customerName,
-      phone: customerForm.phone,
-      email: customerForm.email,
+      staffId: staffId || null,
+      date: selectedDate,
+      startTime: selectedSlot,
+      customerName: finalFormData.customerName,
+      phone: finalFormData.phone,
+      email: finalFormData.email,
+      notes: finalFormData.notes,
     };
 
     try {
       const booking = await submitBooking(bookingPayload);
-
       navigate("/bookingSuccess", {
         state: { booking },
       });
-    } catch {
-      // error already handled in hook state
+    } catch (error) {
+      console.error("Booking failed:", error);
     }
-  }
+  };
 
   return (
     <PageTransition>
-      <section className="mx-auto max-w-6xl px-4 py-12">
-        <h2 className="text-2xl sm:text-3xl font-semibold">
-          Book an Appointment
-        </h2>
-        <p className="mt-2 text-zinc-300/80">
-          Select service, date, staff, and time slot.
-        </p>
-
-        <div className="mt-8 grid lg:grid-cols-2 gap-6">
-          {/* Left panel */}
-          <div className="rounded-3xl border border-white/10 bg-white/5 p-6">
-            <div className="text-sm font-semibold">1) Select Service</div>
-
-            {servicesError && (
-              <p className="mt-3 text-sm text-rose-300">{servicesError}</p>
-            )}
-
-            <div className="mt-3">
-              <select
-                value={serviceId}
-                onChange={(e) => setServiceId(e.target.value)}
-                disabled={servicesLoading}
-                className="h-11 w-full rounded-xl bg-zinc-950 border border-white/10 px-4 text-sm outline-none focus:border-white/30"
-              >
-                <option value="">Select a service</option>
-                {services.map((service) => (
-                  <option
-                    key={service._id || service.id}
-                    value={service._id || service.id}
-                  >
-                    {service.name} • ₹{service.price} • {service.duration}m
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            <div className="mt-6 text-sm font-semibold">2) Select Date</div>
-            <div className="mt-3">
-              <input
-                type="date"
-                value={date}
-                onChange={(e) => setDate(e.target.value)}
-                className="h-11 w-full rounded-xl bg-zinc-950 border border-white/10 px-4 text-sm outline-none focus:border-white/30"
-              />
-              <div className="mt-2 text-xs text-zinc-400">
-                {formatDate(date)}
-              </div>
-            </div>
-
-            <div className="mt-6 text-sm font-semibold">3) Select Staff</div>
-
-            <div className="mt-3">
-              <select
-                value={staffId}
-                onChange={(e) => {
-                  setStaffId(e.target.value);
-                  setTime("");
-                }}
-                disabled={!slotsByStaff.length}
-                className="h-11 w-full rounded-xl bg-zinc-950 border border-white/10 px-4 text-sm outline-none focus:border-white/30"
-              >
-                <option value="">Select staff</option>
-                {slotsByStaff.map((staff) => (
-                  <option key={staff.staffId} value={staff.staffId}>
-                    {staff.staffName}
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            <div className="mt-6 text-sm font-semibold">
-              4) Choose Time Slot
-            </div>
-
-            {slotsError && (
-              <p className="mt-3 text-sm text-rose-300">{slotsError}</p>
-            )}
-
-            <div className="mt-3">
-              <SlotPicker
-                slots={selectedStaffSlots}
-                selected={time}
-                onSelect={setTime}
-                loading={slotsLoading}
-              />
-            </div>
-
-            {selectedService ? (
-              <div className="mt-6 rounded-2xl border border-white/10 bg-black/20 p-4">
-                <div className="text-sm font-semibold">
-                  {selectedService.name}
-                </div>
-                <div className="mt-1 text-sm text-zinc-300/80">
-                  ₹{selectedService.price} • {selectedService.duration} mins
-                </div>
-                {selectedService.description ? (
-                  <p className="mt-2 text-sm text-zinc-400">
-                    {selectedService.description}
-                  </p>
-                ) : null}
-              </div>
-            ) : null}
+      <section className="min-h-screen bg-gradient-to-b from-zinc-950 to-black">
+        {/* Header */}
+        <div className="mx-auto max-w-5xl px-4 py-8 sm:py-12">
+          <div className="text-center mb-8">
+            <h1 className="text-3xl sm:text-4xl font-bold text-white">
+              Book Your Appointment
+            </h1>
+            <p className="mt-2 text-gray-400">
+              Follow the steps below to secure your booking
+            </p>
           </div>
 
-          {/* Right panel */}
-          <div className="rounded-3xl border border-white/10 bg-white/5 p-6">
-            <div className="text-sm font-semibold">5) Your Details</div>
+          {/* Progress Stepper */}
+          <BookingProgressStepper currentStep={currentStep} />
+        </div>
 
-            {bookingError && (
-              <p className="mt-3 text-sm text-rose-300">{bookingError}</p>
+        {/* Main Content */}
+        <div className="mx-auto max-w-5xl px-4 pb-12">
+          <div className="rounded-3xl border border-white/10 bg-white/5 p-6 sm:p-8 backdrop-blur">
+            {/* Step 1: Service Selection */}
+            {currentStep === 1 && (
+              <div className="space-y-6">
+                <div>
+                  <h2 className="text-2xl font-semibold text-white mb-2">
+                    Select a Service
+                  </h2>
+                  <p className="text-gray-400">
+                    Choose the service you&apos;d like to book
+                  </p>
+                </div>
+                <ServiceSelector
+                  services={services}
+                  selectedService={serviceId}
+                  onSelectService={setServiceId}
+                  loading={servicesLoading}
+                  error={servicesError}
+                />
+              </div>
             )}
 
-            <div className="mt-4">
-              <BookingForm
-                onSubmit={handleBookingSubmit}
-                loading={bookingLoading}
-              />
+            {/* Step 2: Staff Selection */}
+            {currentStep === 2 && (
+              <div className="space-y-6">
+                <div>
+                  <h2 className="text-2xl font-semibold text-white mb-2">
+                    Choose Your Stylist
+                  </h2>
+                  <p className="text-gray-400">
+                    Select a staff member or let us assign one for you
+                  </p>
+                </div>
+                <StaffSelector
+                  staff={staff}
+                  selectedStaff={staffId}
+                  onSelectStaff={setStaffId}
+                  loading={loading}
+                  error={error}
+                />
+              </div>
+            )}
+
+            {/* Step 3: Date & Slot Selection */}
+            {currentStep === 3 && (
+              <div className="space-y-6">
+                <div>
+                  <h2 className="text-2xl font-semibold text-white mb-2">
+                    Select Date & Time
+                  </h2>
+                  <p className="text-gray-400">
+                    Pick a convenient date and time slot for your appointment
+                  </p>
+                </div>
+                <DateSelector
+                  dates={dates}
+                  selectedDate={selectedDate}
+                  onSelectDate={setSelectedDate}
+                />
+                <SlotSelector
+                  slots={slots}
+                  selectedSlot={selectedSlot}
+                  onSelectSlot={setSelectedSlot}
+                  loading={slotsLoading}
+                  error={slotsError}
+                />
+              </div>
+            )}
+
+            {/* Step 4: Personal Information */}
+            {currentStep === 4 && (
+              <div className="space-y-6">
+                <div>
+                  <h2 className="text-2xl font-semibold text-white mb-2">
+                    Your Information
+                  </h2>
+                  <p className="text-gray-400">
+                    Please provide your contact details
+                  </p>
+                </div>
+
+                {/* Booking Summary */}
+                <div className="rounded-2xl border border-white/10 bg-white/5 p-4 space-y-3">
+                  <h3 className="font-semibold text-white">Booking Summary</h3>
+                  {selectedService && (
+                    <div className="text-sm space-y-2">
+                      <div className="flex justify-between text-gray-300">
+                        <span>Service:</span>
+                        <span className="text-white font-medium">
+                          {selectedService.name}
+                        </span>
+                      </div>
+                      <div className="flex justify-between text-gray-300">
+                        <span>Price:</span>
+                        <span className="text-white font-medium">
+                          ₹{selectedService.price}
+                        </span>
+                      </div>
+                      <div className="flex justify-between text-gray-300">
+                        <span>Duration:</span>
+                        <span className="text-white font-medium">
+                          {selectedService.duration} mins
+                        </span>
+                      </div>
+                      <div className="border-t border-white/10 pt-2 mt-2 flex justify-between text-gray-300">
+                        <span>Date & Time:</span>
+                        <span className="text-white font-medium">
+                          {formatDateObj(selectedDate)} at {selectedSlot}
+                        </span>
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                <PersonalInfoForm
+                  formData={formData}
+                  onFormChange={setFormData}
+                  onSubmit={handleBookingSubmit}
+                  loading={bookingLoading}
+                  error={bookingError}
+                />
+              </div>
+            )}
+
+            {/* Navigation Buttons */}
+            <div className="mt-8 flex gap-4 justify-between">
+              <button
+                onClick={handleBack}
+                disabled={currentStep === 1}
+                className="px-8 h-12 rounded-xl border border-white/20 text-white font-semibold hover:bg-white/10 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+              >
+                Back
+              </button>
+
+              {currentStep < 4 && (
+                <button
+                  onClick={handleNext}
+                  className="px-8 h-12 rounded-xl bg-blue-500 hover:bg-blue-600 text-white font-semibold transition-colors"
+                >
+                  Next
+                </button>
+              )}
             </div>
           </div>
         </div>

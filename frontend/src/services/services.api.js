@@ -27,6 +27,6 @@ export async function getAvailability({ serviceId, date, staffId }) {
       staffId,
     },
   });
-
+  
   return res.data.data;
 }
