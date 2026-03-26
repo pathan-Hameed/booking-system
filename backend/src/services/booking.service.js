@@ -36,7 +36,7 @@ async function enforceBookingLimit(phone) {
   if (count >= max) {
     throw new ApiError(
       429,
-      `Booking limit reached. Max ${max} active bookings per phone.`
+      `Booking limit reached. Max ${max} active bookings per phone.`,
     );
   }
 }
@@ -48,45 +48,113 @@ async function enforceBookingLimit(phone) {
  * - guest/public booking (user = null)
  */
 export async function createBooking({ user, body }) {
-  const { serviceId, staffId, date, startTime, customerName, phone, email } = body;
+  let { serviceId, staffId, date, startTime, customerName, phone, email } =
+    body;
 
-  // 1) Do not allow past date booking
   if (!isFutureOrToday(date)) {
     throw new ApiError(400, "Cannot book past date");
   }
 
-  // 2) Enforce booking limit per phone
   await enforceBookingLimit(phone);
 
-  // 3) Validate service
   const service = await Service.findById(serviceId).lean();
   if (!service || !service.isActive) {
     throw new ApiError(404, "Service not available");
   }
 
-  // 4) Validate staff
-  const staff = await Staff.findOne({ _id: staffId, isActive: true }).lean();
-  if (!staff) {
-    throw new ApiError(404, "Staff not available");
-  }
+  // If staff selected, validate it
+  let selectedStaff = null;
 
-  // 5) Check if selected staff can perform selected service
-  if (staff.services?.length) {
-    const canDo = staff.services.some((sid) => String(sid) === String(serviceId));
-    if (!canDo) {
-      throw new ApiError(400, "Selected staff cannot perform this service");
+  if (staffId) {
+    selectedStaff = await Staff.findOne({
+      _id: staffId,
+      isActive: true,
+    }).lean();
+    if (!selectedStaff) {
+      throw new ApiError(404, "Staff not available");
+    }
+
+    if (selectedStaff.services?.length) {
+      const canDo = selectedStaff.services.some(
+        (sid) => String(sid) === String(serviceId),
+      );
+      if (!canDo) {
+        throw new ApiError(400, "Selected staff cannot perform this service");
+      }
     }
   }
 
-  // 6) Re-check dynamic availability right before booking creation
   const availability = await getAvailability({ serviceId, date, staffId });
-  const staffSlots = availability.slotsByStaff?.[0]?.slots || [];
 
-  if (!staffSlots.includes(startTime)) {
-    throw new ApiError(409, "Slot not available anymore. Please choose another slot.");
+  // CASE 1: specific staff selected
+  if (staffId) {
+    const staffSlots = availability.slotsByStaff?.[0]?.slots || [];
+
+    const selectedSlot = staffSlots.find((slot) => slot.time === startTime);
+
+    if (!selectedSlot || !selectedSlot.available) {
+      throw new ApiError(
+        409,
+        "Slot not available anymore. Please choose another slot.",
+      );
+    }
+  } else {
+    // CASE 2: no staff selected -> use Any Staff
+    const anyStaffSlot = availability.anyStaffSlots?.find(
+      (slot) => slot.time === startTime,
+    );
+
+    if (!anyStaffSlot || !anyStaffSlot.available) {
+      throw new ApiError(
+        409,
+        "Slot not available anymore. Please choose another slot.",
+      );
+    }
+
+    const availableStaffIds = anyStaffSlot.availableStaffIds || [];
+    if (!availableStaffIds.length) {
+      throw new ApiError(
+        409,
+        "No staff available for this slot anymore. Please choose another slot.",
+      );
+    }
+
+    // choose least-loaded staff for that date
+    const existingBookings = await Booking.find({
+      date,
+      staffId: { $in: availableStaffIds },
+      status: { $in: ["pending", "confirmed"] },
+    }).lean();
+
+    const bookingCountMap = new Map();
+    for (const sid of availableStaffIds) {
+      bookingCountMap.set(String(sid), 0);
+    }
+
+    for (const b of existingBookings) {
+      const key = String(b.staffId);
+      bookingCountMap.set(key, (bookingCountMap.get(key) || 0) + 1);
+    }
+
+    let bestStaffId = availableStaffIds[0];
+    let minCount = bookingCountMap.get(String(bestStaffId)) || 0;
+
+    for (const sid of availableStaffIds) {
+      const count = bookingCountMap.get(String(sid)) || 0;
+      if (count < minCount) {
+        minCount = count;
+        bestStaffId = sid;
+      }
+    }
+
+    staffId = bestStaffId;
+    selectedStaff = await Staff.findById(staffId).lean();
+
+    if (!selectedStaff) {
+      throw new ApiError(404, "Assigned staff not found");
+    }
   }
 
-  // 7) Compute end time using service duration
   const [h, m] = startTime.split(":").map(Number);
   const startMin = h * 60 + m;
   const endMin = startMin + service.duration;
@@ -97,7 +165,6 @@ export async function createBooking({ user, body }) {
   let booking;
 
   try {
-    // 8) Create booking
     booking = await Booking.create({
       serviceId,
       staffId,
@@ -107,28 +174,27 @@ export async function createBooking({ user, body }) {
       customerName,
       phone,
       email,
-      userId: user?.id || null, // null for public guest booking
+      userId: user?.id || null,
       status: "pending",
     });
   } catch (err) {
-    // 9) Handle race condition / duplicate slot booking
     if (err?.code === 11000) {
-      throw new ApiError(409, "This slot just got booked. Please choose another slot.");
+      throw new ApiError(
+        409,
+        "This slot just got booked. Please choose another slot.",
+      );
     }
     throw err;
   }
 
-  // 10) Send emails after booking is already safely created
-  // If email fails, booking still exists
   try {
     await sendBookingEmails({
       booking,
       serviceName: service.name,
-      staffName: staff.name,
+      staffName: selectedStaff?.name,
     });
   } catch (emailErr) {
     console.error("Booking email failed:", emailErr.message);
-    // Do not throw here, booking is already created
   }
 
   return booking.toObject();

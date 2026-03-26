@@ -79,7 +79,7 @@ export async function listBookings({
 }
 
 export async function updateBookingStatus(id, { status }) {
-  const allowed = new Set(["pending", "confirmed", "cancelled", "no_show"]);
+  const allowed = new Set(["pending", "confirmed", "cancelled", "no_show", "expired"]);
   if (!allowed.has(status)) throw new ApiError(400, "Invalid status");
 
   const updated = await Booking.findByIdAndUpdate(

@@ -14,7 +14,7 @@ export async function sendBookingEmails({ booking, serviceName, staffName }) {
         <p><b>Date:</b> ${booking.date}</p>
         <p><b>Time:</b> ${booking.startTime} - ${booking.endTime}</p>
         <p><b>Staff:</b> ${staffName || "Any available stylist"}</p>
-        <p>Thanks,<br/>Snippet Salon</p>
+        <p>Thanks,<br/>KIRA Beauty Salon</p>
       </div>
     `,
   };
